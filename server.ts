@@ -22,6 +22,27 @@ async function startServer() {
     }
   });
 
+  // Reusable helper with automatic model fallback to avoid 503/high-demand failures
+  const generateContentWithFallback = async (contents: string, config: any) => {
+    const models = ["gemini-3.5-flash", "gemini-2.5-flash", "gemini-1.5-flash"];
+    let lastError: any = null;
+
+    for (const model of models) {
+      try {
+        const response = await ai.models.generateContent({
+          model,
+          contents,
+          config,
+        });
+        return response;
+      } catch (err: any) {
+        lastError = err;
+        console.warn(`Model ${model} failed. Error:`, err?.message || err);
+      }
+    }
+    throw lastError || new Error("All AI models in fallback registry are currently unavailable.");
+  };
+
   // API Route for Detection
   app.post("/api/analyze", async (req, res) => {
     try {
@@ -45,14 +66,10 @@ ${code}
 
 Language hint: ${languageHint || "Auto Detect"}`;
 
-      const response = await ai.models.generateContent({
-        model: "gemini-3.5-flash",
-        contents: userPrompt,
-        config: {
-          systemInstruction,
-          responseMimeType: "application/json",
-          temperature: 0.1,
-        }
+      const response = await generateContentWithFallback(userPrompt, {
+        systemInstruction,
+        responseMimeType: "application/json",
+        temperature: 0.1,
       });
 
       const responseText = response.text;
@@ -86,13 +103,9 @@ Language hint: ${languageHint || "Auto Detect"}`;
 - Remove any over-engineered boilerplate or perfectly symmetrical patterns
 Return ONLY the rewritten code. No explanation. No markdown. No code fences. Raw code only.`;
 
-      const response = await ai.models.generateContent({
-        model: "gemini-3.5-flash",
-        contents: `Rewrite this AI-generated code in a human style:\n${code}`,
-        config: {
-          systemInstruction,
-          temperature: 0.75,
-        }
+      const response = await generateContentWithFallback(`Rewrite this AI-generated code in a human style:\n${code}`, {
+        systemInstruction,
+        temperature: 0.75,
       });
 
       let responseText = response.text || "";
